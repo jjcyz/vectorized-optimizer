@@ -6,8 +6,8 @@ Get up and running with Opt2Vec in minutes!
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/opt2vec.git
-cd opt2vec
+git clone https://github.com/jjcyz/vectorized-optimizer
+cd vectorized-optimizer
 
 # Install dependencies
 pip3.11 install -r requirements.txt
