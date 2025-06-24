@@ -181,7 +181,55 @@ def analyze_embedding_space(embeddings: List[np.ndarray],
     if len(embeddings) == 0:
         return {'error': 'No embeddings to analyze'}
 
-    embeddings_array = np.array(embeddings)
+    # Ensure all embeddings are numpy arrays with consistent shapes
+    processed_embeddings = []
+    filtered_losses = []
+    filtered_metadata = []
+
+    for i, emb in enumerate(embeddings):
+        if emb is not None:
+            # Convert to numpy array if it's not already
+            if isinstance(emb, torch.Tensor):
+                emb = emb.detach().cpu().numpy()
+            elif not isinstance(emb, np.ndarray):
+                emb = np.array(emb)
+
+            # Ensure it's 1D and has the expected shape
+            if emb.ndim > 1:
+                emb = emb.flatten()
+
+            processed_embeddings.append(emb)
+
+            # Add corresponding loss and metadata
+            if i < len(losses):
+                filtered_losses.append(losses[i])
+            if i < len(task_metadata):
+                filtered_metadata.append(task_metadata[i])
+        else:
+            # Skip None embeddings
+            continue
+
+    if len(processed_embeddings) == 0:
+        return {'error': 'No valid embeddings to analyze'}
+
+    # Check if all embeddings have the same shape
+    embedding_shapes = [emb.shape for emb in processed_embeddings]
+    if len(set(embedding_shapes)) > 1:
+        logger.warning(f"Found embeddings with different shapes: {set(embedding_shapes)}")
+        # Pad or truncate to the most common shape
+        most_common_shape = max(set(embedding_shapes), key=embedding_shapes.count)
+        for i, emb in enumerate(processed_embeddings):
+            if emb.shape != most_common_shape:
+                if emb.shape[0] < most_common_shape[0]:
+                    # Pad with zeros
+                    padded = np.zeros(most_common_shape)
+                    padded[:emb.shape[0]] = emb
+                    processed_embeddings[i] = padded
+                else:
+                    # Truncate
+                    processed_embeddings[i] = emb[:most_common_shape[0]]
+
+    embeddings_array = np.array(processed_embeddings)
 
     analysis = {}
 
@@ -191,21 +239,21 @@ def analyze_embedding_space(embeddings: List[np.ndarray],
         'std': np.std(embeddings_array),
         'min': np.min(embeddings_array),
         'max': np.max(embeddings_array),
-        'norm_mean': np.mean([np.linalg.norm(emb) for emb in embeddings]),
-        'norm_std': np.std([np.linalg.norm(emb) for emb in embeddings])
+        'norm_mean': np.mean([np.linalg.norm(emb) for emb in processed_embeddings]),
+        'norm_std': np.std([np.linalg.norm(emb) for emb in processed_embeddings])
     }
 
     # Dimensionality analysis
     analysis['dimensionality'] = analyze_embedding_dimensions(embeddings_array)
 
     # Clustering analysis
-    analysis['clustering'] = analyze_embedding_clusters(embeddings_array, losses)
+    analysis['clustering'] = analyze_embedding_clusters(embeddings_array, filtered_losses)
 
     # Temporal analysis
-    analysis['temporal'] = analyze_temporal_patterns(embeddings, task_metadata)
+    analysis['temporal'] = analyze_temporal_patterns(processed_embeddings, filtered_metadata)
 
     # Loss correlation analysis
-    analysis['loss_correlation'] = analyze_loss_correlations(embeddings_array, losses)
+    analysis['loss_correlation'] = analyze_loss_correlations(embeddings_array, filtered_losses)
 
     return analysis
 
@@ -304,6 +352,21 @@ def analyze_temporal_patterns(embeddings: List[np.ndarray],
 
     # Analyze embedding evolution within tasks
     task_evolution = {}
+
+    # Since we filtered out None embeddings, we need to reconstruct task metadata
+    # that matches the filtered embeddings list
+    if len(task_metadata) != len(embeddings):
+        logger.warning(f"Task metadata length ({len(task_metadata)}) doesn't match embeddings length ({len(embeddings)})")
+        # Create synthetic task metadata for the embeddings we have
+        synthetic_metadata = []
+        for i in range(len(embeddings)):
+            synthetic_metadata.append({
+                'task_idx': i // 20,  # Assuming 20 steps per task
+                'step': i % 20,
+                'total_steps': 20
+            })
+        task_metadata = synthetic_metadata
+
     unique_tasks = set(meta['task_idx'] for meta in task_metadata)
 
     for task_idx in unique_tasks:
@@ -517,7 +580,47 @@ def plot_clustering_analysis(embeddings: List[np.ndarray], clustering_analysis: 
     if 'error' in clustering_analysis:
         return
 
-    embeddings_array = np.array(embeddings)
+    # Process embeddings the same way as in analyze_embedding_space
+    processed_embeddings = []
+    for emb in embeddings:
+        if emb is not None:
+            # Convert to numpy array if it's not already
+            if isinstance(emb, torch.Tensor):
+                emb = emb.detach().cpu().numpy()
+            elif not isinstance(emb, np.ndarray):
+                emb = np.array(emb)
+
+            # Ensure it's 1D and has the expected shape
+            if emb.ndim > 1:
+                emb = emb.flatten()
+
+            processed_embeddings.append(emb)
+        else:
+            # Skip None embeddings
+            continue
+
+    if len(processed_embeddings) == 0:
+        logger.warning("No valid embeddings for clustering visualization")
+        return
+
+    # Check if all embeddings have the same shape
+    embedding_shapes = [emb.shape for emb in processed_embeddings]
+    if len(set(embedding_shapes)) > 1:
+        logger.warning(f"Found embeddings with different shapes: {set(embedding_shapes)}")
+        # Pad or truncate to the most common shape
+        most_common_shape = max(set(embedding_shapes), key=embedding_shapes.count)
+        for i, emb in enumerate(processed_embeddings):
+            if emb.shape != most_common_shape:
+                if emb.shape[0] < most_common_shape[0]:
+                    # Pad with zeros
+                    padded = np.zeros(most_common_shape)
+                    padded[:emb.shape[0]] = emb
+                    processed_embeddings[i] = padded
+                else:
+                    # Truncate
+                    processed_embeddings[i] = emb[:most_common_shape[0]]
+
+    embeddings_array = np.array(processed_embeddings)
 
     # Reduce dimensionality for visualization
     if embeddings_array.shape[1] > 2:

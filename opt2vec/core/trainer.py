@@ -46,14 +46,27 @@ class EfficientMetaLearningTrainer:
         Returns:
             Tuple of (data, targets) for the task
         """
-        # Generate random quadratic function: y = ax^2 + bx + c + noise
-        x = torch.randn(task_size, 1, device=self.device) * 2.0
-        a = torch.randn(1, device=self.device) * 0.5
-        b = torch.randn(1, device=self.device) * 0.5
-        c = torch.randn(1, device=self.device) * 0.5
-        noise = torch.randn(task_size, 1, device=self.device) * 0.1
+        # Generate simpler, more stable optimization tasks
+        task_type = np.random.choice(['quadratic', 'linear'])
 
-        y = a * x**2 + b * x + c + noise
+        x = torch.randn(task_size, 1, device=self.device) * 2.0  # Smaller range for stability
+
+        if task_type == 'quadratic':
+            # Quadratic function: y = ax^2 + bx + c + noise
+            a = torch.randn(1, device=self.device) * 0.5  # Smaller coefficients
+            b = torch.randn(1, device=self.device) * 0.5
+            c = torch.randn(1, device=self.device) * 0.3
+            y = a * x**2 + b * x + c
+
+        else:  # linear
+            # Linear function: y = ax + b + noise
+            a = torch.randn(1, device=self.device) * 0.8
+            b = torch.randn(1, device=self.device) * 0.3
+            y = a * x + b
+
+        # Add small noise
+        noise = torch.randn(task_size, 1, device=self.device) * 0.1
+        y = y + noise
 
         return x, y
 
@@ -117,7 +130,8 @@ class EfficientMetaLearningTrainer:
     def meta_train_step(self,
                        opt2vec_components: Dict[str, nn.Module],
                        meta_optimizer: optim.Optimizer,
-                       num_tasks: int = 3) -> Dict[str, float]:
+                       num_tasks: int = 3,
+                       inner_steps: int = 5) -> Dict[str, float]:
         """
         Single meta-training step.
 
@@ -125,6 +139,7 @@ class EfficientMetaLearningTrainer:
             opt2vec_components: Dictionary containing Opt2Vec networks
             meta_optimizer: Optimizer for meta-parameters
             num_tasks: Number of tasks to use per meta-step
+            inner_steps: Number of inner loop steps
 
         Returns:
             Dictionary with meta-training statistics
@@ -134,6 +149,11 @@ class EfficientMetaLearningTrainer:
 
         # Zero meta-gradients
         meta_optimizer.zero_grad()
+
+        # Collect meta parameters for gradient clipping
+        meta_params = []
+        for component in opt2vec_components.values():
+            meta_params.extend(component.parameters())
 
         for task_idx in range(num_tasks):
             # Create fresh task and model
@@ -153,10 +173,14 @@ class EfficientMetaLearningTrainer:
             self._copy_meta_parameters(opt2vec_components, task_optimizer)
 
             # Inner loop: train with Opt2Vec
-            losses = self.quick_inner_loop(model, data, targets, task_optimizer, steps=5)
+            losses = self.quick_inner_loop(model, data, targets, task_optimizer, steps=inner_steps)
 
             # Meta-objective: minimize final loss
             final_loss_value = losses[-1]
+
+            # Clip extreme loss values to prevent instability
+            final_loss_value = np.clip(final_loss_value, 0.0, 100.0)  # More aggressive clipping
+
             meta_losses.append(final_loss_value)
 
             # Create a meta-loss that directly depends on the final loss
@@ -172,6 +196,11 @@ class EfficientMetaLearningTrainer:
 
             total_meta_loss = meta_loss + reg_term
 
+            # Check for NaN and skip if found
+            if torch.isnan(total_meta_loss) or torch.isinf(total_meta_loss):
+                logger.warning(f"NaN/Inf detected in meta-loss at step {self.meta_step_count}, skipping...")
+                continue
+
             # Compute gradients for meta-update
             total_meta_loss.backward()
 
@@ -186,6 +215,8 @@ class EfficientMetaLearningTrainer:
             gc.collect()
 
         # Meta-update
+        # Apply gradient clipping for stability
+        torch.nn.utils.clip_grad_norm_(meta_params, max_norm=0.5)  # More aggressive clipping
         meta_optimizer.step()
 
         # Compute statistics
@@ -290,7 +321,7 @@ class EfficientMetaLearningTrainer:
         meta_params = []
         for component in opt2vec_components.values():
             meta_params.extend(component.parameters())
-        meta_optimizer = optim.Adam(meta_params, lr=meta_lr)
+        meta_optimizer = optim.Adam(meta_params, lr=meta_lr, weight_decay=1e-5)
 
         # Training history
         meta_losses = []
@@ -304,14 +335,15 @@ class EfficientMetaLearningTrainer:
             stats = self.meta_train_step(
                 opt2vec_components,
                 meta_optimizer,
-                num_tasks_per_step
+                num_tasks_per_step,
+                inner_steps
             )
 
             meta_losses.append(stats['meta_loss'])
             improvements.append(stats['avg_improvement'])
 
             # Logging
-            if step % 10 == 0:
+            if step % 5 == 0:  # More frequent logging for 60 steps
                 logger.info(f"Meta-step {step}: Loss={stats['meta_loss']:.4f}, "
                            f"Improvement={stats['avg_improvement']:.4f}")
 

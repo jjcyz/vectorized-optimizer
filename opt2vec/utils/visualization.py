@@ -55,29 +55,53 @@ def plot_embedding_evolution(embeddings: List[np.ndarray],
         print("No embeddings to plot")
         return
 
-    # Flatten and pad embeddings to consistent shape
-    flattened_embeddings = []
-    for emb in embeddings:
+    # Process embeddings the same way as in analyze_embedding_space
+    processed_embeddings = []
+    filtered_losses = []
+
+    for i, emb in enumerate(embeddings):
         if emb is not None:
-            flattened_embeddings.append(emb.flatten())
+            # Convert to numpy array if it's not already
+            if isinstance(emb, torch.Tensor):
+                emb = emb.detach().cpu().numpy()
+            elif not isinstance(emb, np.ndarray):
+                emb = np.array(emb)
+
+            # Ensure it's 1D and has the expected shape
+            if emb.ndim > 1:
+                emb = emb.flatten()
+
+            processed_embeddings.append(emb)
+
+            # Add corresponding loss
+            if losses is not None and i < len(losses):
+                filtered_losses.append(losses[i])
         else:
-            if flattened_embeddings:
-                flattened_embeddings.append(np.zeros_like(flattened_embeddings[0]))
-            else:
-                continue
-    if len(flattened_embeddings) < 2:
-        print("Not enough embeddings to plot")
+            # Skip None embeddings
+            continue
+
+    if len(processed_embeddings) < 2:
+        print("Not enough valid embeddings to plot")
         return
-    max_dim = max(emb.shape[0] for emb in flattened_embeddings)
-    padded_embeddings = []
-    for emb in flattened_embeddings:
-        if emb.shape[0] < max_dim:
-            padded = np.zeros(max_dim)
-            padded[:emb.shape[0]] = emb
-            padded_embeddings.append(padded)
-        else:
-            padded_embeddings.append(emb)
-    embeddings_array = np.array(padded_embeddings)
+
+    # Check if all embeddings have the same shape
+    embedding_shapes = [emb.shape for emb in processed_embeddings]
+    if len(set(embedding_shapes)) > 1:
+        print(f"Found embeddings with different shapes: {set(embedding_shapes)}")
+        # Pad or truncate to the most common shape
+        most_common_shape = max(set(embedding_shapes), key=embedding_shapes.count)
+        for i, emb in enumerate(processed_embeddings):
+            if emb.shape != most_common_shape:
+                if emb.shape[0] < most_common_shape[0]:
+                    # Pad with zeros
+                    padded = np.zeros(most_common_shape)
+                    padded[:emb.shape[0]] = emb
+                    processed_embeddings[i] = padded
+                else:
+                    # Truncate
+                    processed_embeddings[i] = emb[:most_common_shape[0]]
+
+    embeddings_array = np.array(processed_embeddings)
 
     # Use t-SNE for dimensionality reduction if needed
     if embeddings_array.shape[1] > 2:
@@ -90,9 +114,9 @@ def plot_embedding_evolution(embeddings: List[np.ndarray],
     plt.figure(figsize=(12, 8))
 
     # Create scatter plot
-    if losses is not None:
+    if filtered_losses and len(filtered_losses) == len(embeddings_2d):
         scatter = plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1],
-                            c=losses, cmap='viridis', alpha=0.7)
+                            c=filtered_losses, cmap='viridis', alpha=0.7)
         plt.colorbar(scatter, label='Loss')
     else:
         plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], alpha=0.7)
