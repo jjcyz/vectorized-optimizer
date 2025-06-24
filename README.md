@@ -166,10 +166,6 @@ This work builds on:
 4. Ensure all tests pass
 5. Submit a pull request
 
-## 📄 License
-
-MIT License - see LICENSE file for details.
-
 ## 🎯 Success Metrics
 
 - [x] **Functionality**: Opt2Vec trains without crashing, produces embeddings
