@@ -641,7 +641,11 @@ def plot_clustering_analysis(embeddings: List[np.ndarray], clustering_analysis: 
 
     # Plot cluster centers (if 2D)
     if cluster_centers.shape[1] > 2:
-        centers_2d = tsne.fit_transform(cluster_centers)
+        # Use a smaller perplexity for cluster centers since there are fewer points
+        n_centers = cluster_centers.shape[0]
+        perplexity = min(30, max(1, n_centers - 1))  # Ensure perplexity < n_samples
+        tsne_centers = TSNE(n_components=2, random_state=42, perplexity=perplexity)
+        centers_2d = tsne_centers.fit_transform(cluster_centers)
     else:
         centers_2d = cluster_centers
 
