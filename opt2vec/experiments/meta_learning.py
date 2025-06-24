@@ -76,14 +76,10 @@ def run_meta_learning_experiment(device: torch.device = torch.device('cpu'),
     meta_losses = meta_results['meta_losses']
     improvements = meta_results['improvements']
 
-    # Filter out NaN values for analysis
-    valid_meta_losses = [loss for loss in meta_losses if not (np.isnan(loss) or np.isinf(loss))]
-    valid_improvements = [imp for imp in improvements if not (np.isnan(imp) or np.isinf(imp))]
-
-    logger.info(f"Initial meta-loss: {valid_meta_losses[0]:.4f}")
-    logger.info(f"Final meta-loss: {valid_meta_losses[-1]:.4f}")
-    logger.info(f"Meta-loss improvement: {valid_meta_losses[0] - valid_meta_losses[-1]:.4f}")
-    logger.info(f"Average task improvement: {np.mean(valid_improvements):.4f}")
+    logger.info(f"Initial meta-loss: {meta_losses[0]:.4f}")
+    logger.info(f"Final meta-loss: {meta_losses[-1]:.4f}")
+    logger.info(f"Meta-loss improvement: {meta_losses[0] - meta_losses[-1]:.4f}")
+    logger.info(f"Average task improvement: {np.mean(improvements):.4f}")
 
     # Compute convergence metrics
     convergence_rate = compute_convergence_rate(meta_losses)
@@ -144,15 +140,9 @@ def compute_convergence_rate(losses: List[float]) -> float:
         return 0.0
 
     try:
-        # Filter out NaN and extreme values
-        valid_losses = [loss for loss in losses if not (np.isnan(loss) or np.isinf(loss) or loss > 1000)]
-
-        if len(valid_losses) < 3:
-            return 0.0
-
         # Fit exponential decay
-        t = np.arange(len(valid_losses))
-        log_losses = np.log(np.maximum(valid_losses, 1e-8))
+        t = np.arange(len(losses))
+        log_losses = np.log(np.maximum(losses, 1e-8))
         coeffs = np.polyfit(t, log_losses, 1)
         convergence_rate = -coeffs[0]
         return max(0.0, convergence_rate)
@@ -162,7 +152,7 @@ def compute_convergence_rate(losses: List[float]) -> float:
 
 def test_meta_learned_optimizer(opt2vec_components: Dict[str, nn.Module],
                                device: torch.device = torch.device('cpu'),
-                               num_test_tasks: int = 8) -> Dict[str, Any]:
+                               num_test_tasks: int = 5) -> Dict[str, Any]:
     """
     Test the meta-learned optimizer on new tasks.
 
@@ -181,7 +171,7 @@ def test_meta_learned_optimizer(opt2vec_components: Dict[str, nn.Module],
     for task_idx in range(num_test_tasks):
         # Create test task
         trainer = EfficientMetaLearningTrainer(device=device)
-        data, targets = trainer.create_tiny_task(task_size=60)
+        data, targets = trainer.create_tiny_task(task_size=50)
         model = trainer.create_tiny_model()
 
         # Initialize optimizer with meta-learned parameters
@@ -197,7 +187,7 @@ def test_meta_learned_optimizer(opt2vec_components: Dict[str, nn.Module],
         trainer._copy_meta_parameters(opt2vec_components, optimizer)
 
         # Train on test task
-        losses = trainer.quick_inner_loop(model, data, targets, optimizer, steps=12)
+        losses = trainer.quick_inner_loop(model, data, targets, optimizer, steps=10)
 
         # Compute metrics
         metrics = compute_optimization_metrics(losses)
@@ -294,13 +284,13 @@ if __name__ == "__main__":
     # Run experiment
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Run improved meta-learning experiment with 60 steps
+    # Run standard meta-learning experiment
     results = run_meta_learning_experiment(
         device=device,
-        num_meta_steps=60,  # Increased from 50
-        num_tasks_per_step=4,  # Increased from 3
-        meta_lr=5e-4,  # Reduced from 1e-3 for better stability
-        inner_steps=8  # Increased from 5 for better task learning
+        num_meta_steps=50,
+        num_tasks_per_step=3,
+        meta_lr=1e-3,
+        inner_steps=5
     )
 
     print("\nMeta-learning experiment completed successfully!")
