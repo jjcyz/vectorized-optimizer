@@ -115,7 +115,7 @@ python experiments/mnist_baseline.py
 
 ### Meta-Learning Training
 ```bash
-python experiments/meta_learning.py
+python3.11 experiments/meta_learning.py
 ```
 
 ### Embedding Analysis
