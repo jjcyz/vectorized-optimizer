@@ -1,0 +1,3 @@
+[console_scripts]
+opt2vec-example = example_usage:main
+opt2vec-test = test_opt2vec:main
