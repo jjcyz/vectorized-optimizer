@@ -1,0 +1,13 @@
+# Python cache files
+__pycache__/
+*.pyc
+
+# Build and distribution
+.dist/
+opt2vec.egg-info/
+
+# Data files (MNIST dataset)
+data/MNIST/raw/
+
+# OS files
+.DS_Store
