@@ -201,13 +201,3 @@ optimizer = LightweightOpt2VecOptimizer(
 4. **Analyze Embeddings**: Understand optimization behavior
 5. **Customize**: Adapt for your specific use case
 
-## 📚 Learn More
-
-- **README.md**: Comprehensive project overview
-- **Documentation**: Detailed API documentation
-- **Research Paper**: Theoretical foundations and results
-- **Examples**: More advanced usage patterns
-
----
-
-**Happy optimizing! 🚀**
