@@ -10,6 +10,7 @@ from typing import List, Tuple, Dict, Any, Optional
 import logging
 import time
 import gc
+import warnings
 
 from .optimizer import LightweightOpt2VecOptimizer
 from .network import TinyOpt2VecNetwork
@@ -26,15 +27,133 @@ class EfficientMetaLearningTrainer:
     - Outer loop: Update Opt2Vec networks based on inner loop performance
     """
 
-    def __init__(self, device: torch.device = torch.device('cpu')):
+    def __init__(self, device: torch.device = torch.device('cpu'), debug_mode: bool = False):
         """
         Initialize meta-learning trainer.
 
         Args:
             device: Target device for computation
+            debug_mode: Enable comprehensive debugging
         """
         self.device = device
+        self.debug_mode = debug_mode
         self.meta_step_count = 0
+
+        # Debugging and monitoring
+        self.debug_stats = {
+            'meta_grad_norms': [],
+            'meta_losses': [],
+            'task_improvements': [],
+            'embedding_collapse_detected': [],
+            'numerical_instability_events': [],
+            'gradient_explosion_events': [],
+            'gradient_vanishing_events': []
+        }
+
+    def _check_meta_gradients(self, meta_params: List[torch.Tensor], step_name: str) -> Dict[str, Any]:
+        """
+        Check meta-gradients for stability issues.
+
+        Args:
+            meta_params: List of meta-parameters
+            step_name: Name for logging
+
+        Returns:
+            Dictionary with gradient statistics
+        """
+        total_norm = 0.0
+        param_count = 0
+        max_grad = 0.0
+        min_grad = float('inf')
+        nan_count = 0
+        inf_count = 0
+
+        for param in meta_params:
+            if param.grad is not None:
+                grad_norm = param.grad.norm(2).item()
+                total_norm += grad_norm ** 2
+                param_count += 1
+                max_grad = max(max_grad, param.grad.abs().max().item())
+                min_grad = min(min_grad, param.grad.abs().min().item())
+
+                if torch.isnan(param.grad).any():
+                    nan_count += 1
+                if torch.isinf(param.grad).any():
+                    inf_count += 1
+
+        total_norm = (total_norm ** 0.5) if param_count > 0 else 0.0
+
+        # Check for gradient explosion/vanishing
+        if total_norm > 10.0:
+            self.debug_stats['gradient_explosion_events'].append({
+                'step': self.meta_step_count,
+                'norm': total_norm,
+                'step_name': step_name
+            })
+            logger.warning(f"Gradient explosion detected at {step_name}: norm={total_norm:.4f}")
+
+        if total_norm < 1e-8 and param_count > 0:
+            self.debug_stats['gradient_vanishing_events'].append({
+                'step': self.meta_step_count,
+                'norm': total_norm,
+                'step_name': step_name
+            })
+            logger.warning(f"Gradient vanishing detected at {step_name}: norm={total_norm:.4e}")
+
+        if nan_count > 0 or inf_count > 0:
+            self.debug_stats['numerical_instability_events'].append({
+                'step': self.meta_step_count,
+                'nan_count': nan_count,
+                'inf_count': inf_count,
+                'step_name': step_name
+            })
+            logger.warning(f"Numerical instability at {step_name}: NaN={nan_count}, Inf={inf_count}")
+
+        return {
+            'total_norm': total_norm,
+            'max_grad': max_grad,
+            'min_grad': min_grad,
+            'param_count': param_count,
+            'nan_count': nan_count,
+            'inf_count': inf_count
+        }
+
+    def _validate_task_optimizer(self, optimizer: LightweightOpt2VecOptimizer, task_idx: int) -> bool:
+        """
+        Validate task optimizer state for stability.
+
+        Args:
+            optimizer: Task optimizer to validate
+            task_idx: Task index for logging
+
+        Returns:
+            True if optimizer is stable, False otherwise
+        """
+        # Get debug summary
+        debug_summary = optimizer.get_debug_summary()
+
+        # Check for embedding collapse
+        if debug_summary.get('embedding_stats'):
+            recent_embeddings = debug_summary['embedding_stats']
+            if recent_embeddings:
+                latest_embedding = recent_embeddings[-1]
+                if latest_embedding['std'] < 1e-6:
+                    self.debug_stats['embedding_collapse_detected'].append({
+                        'step': self.meta_step_count,
+                        'task_idx': task_idx,
+                        'embedding_std': latest_embedding['std']
+                    })
+                    logger.warning(f"Embedding collapse detected in task {task_idx}: std={latest_embedding['std']:.2e}")
+                    return False
+
+        # Check for extreme gradient norms
+        if debug_summary.get('grad_norm_stats'):
+            grad_stats = debug_summary['grad_norm_stats']
+            if grad_stats['max'] > 100.0:
+                logger.warning(f"Extreme gradient norm in task {task_idx}: max={grad_stats['max']:.4f}")
+                return False
+
+        return True
 
     def create_tiny_task(self, task_size: int = 50) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -112,6 +231,14 @@ class EfficientMetaLearningTrainer:
             outputs = model(data)
             loss = criterion(outputs, targets)
 
+            # Check for numerical issues in loss
+            if torch.isnan(loss) or torch.isinf(loss):
+                logger.warning(f"Numerical issue in loss at inner step {step}: {loss.item()}")
+                # Use previous loss or a default value
+                loss_value = losses[-1] if losses else 1.0
+                losses.append(loss_value)
+                continue
+
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
@@ -166,7 +293,11 @@ class EfficientMetaLearningTrainer:
                 base_lr=0.01,
                 embedding_dim=16,
                 history_length=5,
-                device=self.device
+                device=self.device,
+                debug_mode=self.debug_mode,
+                max_grad_norm=1.0,
+                lr_bounds=(1e-6, 1e2),
+                momentum_bounds=(0.0, 0.99)
             )
 
             # Copy meta-parameters to task optimizer
@@ -174,6 +305,11 @@ class EfficientMetaLearningTrainer:
 
             # Inner loop: train with Opt2Vec
             losses = self.quick_inner_loop(model, data, targets, task_optimizer, steps=inner_steps)
+
+            # Validate task optimizer state
+            if not self._validate_task_optimizer(task_optimizer, task_idx):
+                logger.warning(f"Task {task_idx} optimizer validation failed, skipping...")
+                continue
 
             # Meta-objective: minimize final loss
             final_loss_value = losses[-1]
@@ -214,14 +350,22 @@ class EfficientMetaLearningTrainer:
             del model, task_optimizer, data, targets, meta_loss, total_meta_loss, reg_term
             gc.collect()
 
+        # Check meta-gradients before update
+        grad_stats = self._check_meta_gradients(meta_params, "before_meta_update")
+        self.debug_stats['meta_grad_norms'].append(grad_stats['total_norm'])
+
         # Meta-update
         # Apply gradient clipping for stability
         torch.nn.utils.clip_grad_norm_(meta_params, max_norm=0.5)  # More aggressive clipping
         meta_optimizer.step()
 
         # Compute statistics
-        avg_meta_loss = np.mean(meta_losses)
-        avg_improvement = np.mean([r['improvement'] for r in task_results])
+        avg_meta_loss = np.mean(meta_losses) if meta_losses else 0.0
+        avg_improvement = np.mean([r['improvement'] for r in task_results]) if task_results else 0.0
+
+        # Store debugging info
+        self.debug_stats['meta_losses'].append(avg_meta_loss)
+        self.debug_stats['task_improvements'].append(avg_improvement)
 
         self.meta_step_count += 1
 
@@ -229,7 +373,8 @@ class EfficientMetaLearningTrainer:
             'meta_loss': avg_meta_loss,
             'avg_improvement': avg_improvement,
             'num_tasks': num_tasks,
-            'meta_step': self.meta_step_count
+            'meta_step': self.meta_step_count,
+            'grad_stats': grad_stats
         }
 
     def _copy_meta_parameters(self,
