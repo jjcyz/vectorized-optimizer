@@ -287,17 +287,24 @@ class EfficientMetaLearningTrainer:
             data, targets = self.create_tiny_task(task_size=30)  # Very small tasks
             model = self.create_tiny_model()
 
-            # Initialize Opt2Vec optimizer with current meta-parameters
+            # Initialize Opt2Vec optimizer with current meta-parameters and BEST configurations
             task_optimizer = LightweightOpt2VecOptimizer(
                 model.parameters(),
                 base_lr=0.01,
-                embedding_dim=16,
-                history_length=5,
+                embedding_dim=64,  # Best: 64 (vs 16)
+                history_length=8,  # Best: 8 (vs 5)
+                activation='gelu',  # Best: gelu
                 device=self.device,
                 debug_mode=self.debug_mode,
                 max_grad_norm=1.0,
                 lr_bounds=(1e-6, 1e2),
-                momentum_bounds=(0.0, 0.99)
+                momentum_bounds=(0.0, 0.99),
+                use_extended_features=True,  # Use best features
+                normalize_features=True,
+                dropout=0.1,
+                use_layer_norm=True,
+                use_attention=True,
+                use_positional_encoding=True
             )
 
             # Copy meta-parameters to task optimizer
@@ -440,7 +447,7 @@ class EfficientMetaLearningTrainer:
                   meta_lr: float = 1e-3,
                   inner_steps: int = 5) -> Dict[str, Any]:
         """
-        Run meta-training loop.
+        Run meta-training loop with best configurations.
 
         Args:
             num_meta_steps: Number of meta-training steps
@@ -451,10 +458,32 @@ class EfficientMetaLearningTrainer:
         Returns:
             Dictionary with training history
         """
-        # Initialize meta-components
-        opt2vec_net = TinyOpt2VecNetwork(embedding_dim=16, history_length=5).to(self.device)
-        lr_adapter = nn.Sequential(nn.Linear(16, 1), nn.Sigmoid()).to(self.device)
-        momentum_adapter = nn.Sequential(nn.Linear(16, 1), nn.Sigmoid()).to(self.device)
+        # Initialize meta-components with BEST configurations
+        opt2vec_net = TinyOpt2VecNetwork(
+            embedding_dim=64,  # Best: 64 (vs 16)
+            history_length=8,  # Best: 8 (vs 5)
+            activation='gelu',  # Best: gelu
+            use_attention=True,
+            use_positional_encoding=True,
+            use_layer_norm=True,
+            dropout=0.1
+        ).to(self.device)
+
+        lr_adapter = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        ).to(self.device)
+
+        momentum_adapter = nn.Sequential(
+            nn.Linear(64, 32),  # Updated for embedding_dim=64
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        ).to(self.device)
 
         opt2vec_components = {
             'opt2vec_net': opt2vec_net,
@@ -473,6 +502,7 @@ class EfficientMetaLearningTrainer:
         improvements = []
 
         logger.info(f"Starting meta-training for {num_meta_steps} steps...")
+        logger.info(f"Using BEST configurations: embedding_dim=64, history_length=8, activation=gelu")
         start_time = time.time()
 
         for step in range(num_meta_steps):
