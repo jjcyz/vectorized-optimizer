@@ -14,7 +14,7 @@ class EnhancedNetworkConfig:
     embedding_dim: int = 64  # [32, 64, 128]
 
     # History lengths to test
-    history_length: int = 16  # [8, 16, 32]
+    history_length: int = 8  # [8, 16, 32]
 
     # Activation functions to test
     activation: str = 'gelu'  # ['gelu', 'swish', 'relu']
@@ -208,7 +208,7 @@ class EnhancedExperimentConfigs:
         """Get recommended configuration based on best practices."""
         return EnhancedNetworkConfig(
             embedding_dim=64,
-            history_length=16,
+            history_length=8,
             activation='gelu',
             hidden_dim=128,
             num_residual_blocks=3,

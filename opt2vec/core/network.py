@@ -188,7 +188,7 @@ class TinyOpt2VecNetwork(nn.Module):
     def __init__(self,
                  input_dim: int = 7,  # Extended features: [loss, grad_norm, lr, param_norm, grad_diversity, loss_curvature, step]
                  embedding_dim: int = 64,  # Configurable: [32, 64, 128]
-                 history_length: int = 16,  # Extended: [8, 16, 32]
+                 history_length: int = 8,  # Extended: [8, 16, 32]
                  hidden_dim: int = 128,
                  num_residual_blocks: int = 3,
                  activation: str = 'gelu',  # 'gelu', 'swish', 'relu'
@@ -334,7 +334,7 @@ class NetworkConfig:
 
     @staticmethod
     def get_config(embedding_dim: int = 64,
-                   history_length: int = 16,
+                   history_length: int = 8,
                    activation: str = 'gelu') -> dict:
         """
         Get network configuration for given parameters.

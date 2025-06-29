@@ -32,7 +32,7 @@ class LightweightOpt2VecOptimizer:
                  parameters,
                  base_lr: float = 0.01,
                  embedding_dim: int = 64,  # Configurable: [32, 64, 128]
-                 history_length: int = 16,  # Extended: [8, 16, 32]
+                 history_length: int = 8,  # Extended: [8, 16, 32]
                  activation: str = 'gelu',  # 'gelu', 'swish', 'relu'
                  device: torch.device = torch.device('cpu'),
                  debug_mode: bool = False,

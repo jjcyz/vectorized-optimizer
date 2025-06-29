@@ -254,6 +254,72 @@ class EfficientMetaLearningTrainer:
 
         return losses
 
+    def quick_inner_loop_with_handcrafted(self,
+                                        model: nn.Module,
+                                        data: torch.Tensor,
+                                        targets: torch.Tensor,
+                                        optimizer_type: str,
+                                        steps: int = 12) -> Dict[str, Any]:
+        """
+        Quick inner loop training with handcrafted optimizers for comparison.
+
+        Args:
+            model: Model to train
+            data: Input data
+            targets: Target values
+            optimizer_type: 'adam' or 'sgd'
+            steps: Number of training steps
+
+        Returns:
+            Dictionary with training results
+        """
+        losses = []
+        criterion = nn.MSELoss()
+
+        # Initialize handcrafted optimizer
+        if optimizer_type.lower() == 'adam':
+            optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        elif optimizer_type.lower() == 'sgd':
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+        else:
+            raise ValueError(f"Unknown optimizer type: {optimizer_type}")
+
+        start_time = time.time()
+
+        for step in range(steps):
+            # Forward pass
+            outputs = model(data)
+            loss = criterion(outputs, targets)
+
+            # Check for numerical issues in loss
+            if torch.isnan(loss) or torch.isinf(loss):
+                logger.warning(f"Numerical issue in loss at step {step}: {loss.item()}")
+                # Use previous loss or a default value
+                loss_value = losses[-1] if losses else 1.0
+                losses.append(loss_value)
+                continue
+
+            # Backward pass
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            losses.append(loss.item())
+
+            # Clear memory
+            if step % 2 == 0:
+                del outputs
+                gc.collect()
+
+        training_time = time.time() - start_time
+
+        return {
+            'losses': losses,
+            'training_time': training_time,
+            'initial_loss': losses[0] if losses else 0.0,
+            'final_loss': losses[-1] if losses else 0.0,
+            'improvement': losses[0] - losses[-1] if len(losses) > 1 else 0.0
+        }
+
     def meta_train_step(self,
                        opt2vec_components: Dict[str, nn.Module],
                        meta_optimizer: optim.Optimizer,

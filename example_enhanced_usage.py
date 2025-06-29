@@ -62,9 +62,9 @@ def evaluate(model, data_loader, device):
 
 
 def train_with_enhanced_opt2vec(
-    embedding_dim: int = 32,
-    history_length: int = 8,
-    activation: str = 'gelu',
+    embedding_dim: int = 64,  # Best: 64 (vs 128, 32)
+    history_length: int = 8,  # Best: 8 (vs 16, 32)
+    activation: str = 'gelu',  # Best: gelu (vs swish, relu)
     use_extended_features: bool = True,
     num_epochs: int = 10,
     batch_size: int = 32,
@@ -375,16 +375,17 @@ def main():
     print("Enhanced Opt2Vec Optimizer Demonstration")
     print("=" * 50)
 
-    # Use best practices configuration
+    # Use best configurations based on experiments
     config = {
-        'embedding_dim': 128,
-        'history_length': 32,
-        'activation': 'gelu',
+        'embedding_dim': 64,  # Best: 64 (vs 128, 32)
+        'history_length': 8,  # Best: 8 (vs 16, 32)
+        'activation': 'gelu',  # Best: gelu (vs swish, relu)
         'use_extended_features': True
     }
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
+
     # Opt2Vec
     history, opt2vec_test_loss, opt2vec_test_acc = train_with_enhanced_opt2vec(
         embedding_dim=config['embedding_dim'],
@@ -413,17 +414,17 @@ def main():
     plt.tight_layout()
     plt.show()
 
-    print("\nEnhanced Opt2Vec demonstration completed!")
+    print("\nCompleted!")
 
     # Plot training history
     plot_training_history(history, config)
     plot_training_history(adam_history, config)
     plot_training_history(sgd_history, config)
 
-    # Hyperparameter sweep section
-    print("Hyperparameter Sweep: Opt2Vec Configurations")
-    print("="*50)
-    compare_configurations()
+    # # Hyperparameter sweep section
+    # print("Hyperparameter Sweep: Opt2Vec Configurations")
+    # print("="*50)
+    # compare_configurations()
 
 if __name__ == "__main__":
     main()
