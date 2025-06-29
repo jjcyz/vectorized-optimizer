@@ -25,7 +25,7 @@ class LightweightOptimizationHistory:
                  use_extended_features: bool = True,
                  normalize_features: bool = True):
         """
-        Initialize enhanced history tracker.
+        Initialize history tracker.
 
         Args:
             history_length: Number of recent steps to track (8, 16, 32)

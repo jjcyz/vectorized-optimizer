@@ -19,7 +19,17 @@ Training History → TinyOpt2VecNetwork → Embedding Vector → Adaptive Update
 [loss, grad_norm, lr] → Simple MLP → [16-dim vector] → [lr_scale, momentum] → [parameter updates]
 ```
 
-## 🚀 Quick Start
+## 🚀 Enhanced Features
+
+- **Configurable Embedding Dimensions:** [32, 64, 128]
+- **Residual Connections & Normalization:** LayerNorm/BatchNorm for stability
+- **Dropout & Multiple Activations:** Swish, GELU, ReLU
+- **Lightweight Attention & Positional Encoding:** For history encoding
+- **Extended History Windows:** [8, 16, 32] steps
+- **Extended Feature Set:** Parameter norms, gradient diversity, loss curvature, temporal step
+- **Systematic Experimentation:** Easy config and experiment runner
+
+## 🛠️ Quick Start
 
 ### Installation
 
@@ -30,35 +40,32 @@ pip install -r requirements.txt
 ### Basic Usage
 
 ```python
+import torch
 from opt2vec.core.optimizer import LightweightOpt2VecOptimizer
 from opt2vec.core.network import TinyOpt2VecNetwork
 import torch
 
-# Create a simple model
 model = torch.nn.Linear(10, 1)
 criterion = torch.nn.MSELoss()
 
-# Initialize Opt2Vec optimizer
 optimizer = LightweightOpt2VecOptimizer(
     model.parameters(),
     base_lr=0.01,
-    embedding_dim=16,
-    history_length=5
+    embedding_dim=64,           # [32, 64, 128]
+    history_length=16,          # [8, 16, 32]
+    activation='gelu',          # 'gelu', 'swish', 'relu'
+    use_extended_features=True, # Use parameter norms, gradient diversity, etc.
+    use_attention=True,         # Use attention mechanism
+    use_positional_encoding=True, # Use positional encoding
+    device=torch.device('cpu')
 )
 
-# Training loop
 for epoch in range(10):
-    # Forward pass
     outputs = model(inputs)
     loss = criterion(outputs, targets)
-
-    # Backward pass
-    loss.backward()
-
-    # Opt2Vec step (automatically adapts learning rate and momentum)
-    embedding = optimizer.step(loss.item())
-
     optimizer.zero_grad()
+    loss.backward()
+    optimizer.step(loss.item())
 ```
 
 ### Meta-Learning Example
@@ -76,6 +83,22 @@ trainer.meta_train(
     inner_steps=5
 )
 ```
+
+## 🧑‍🔬 Debugging & Monitoring
+- **Comprehensive logging:** Track gradient norms, learning rates, parameter/embedding stats, and more
+- **Gradient clipping & stability checks:** Prevents explosion/instability
+- **Debug summaries:** `optimizer.get_debug_summary()` for stepwise stats
+- **Visualization:** 6-panel plots for loss, learning rate, momentum, norms, and diversity
+
+## 🧪 Experimentation
+- **Configurable via arguments or config objects** (see `NetworkConfig`)
+- **Experiment runner** for systematic sweeps (see `ENHANCED_FEATURES.md`)
+- **Compare with Adam/SGD** by swapping optimizers in your training loop
+
+## 📚 References & Further Info
+- See `ENHANCED_FEATURES.md` for architecture details and advanced usage
+- See `DEBUGGING_GUIDE.md` for debugging and stability monitoring
+- See `example_enhanced_usage.py` for a full demonstration
 
 ## 📊 Performance Expectations
 
