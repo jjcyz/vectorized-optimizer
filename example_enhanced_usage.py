@@ -400,9 +400,6 @@ def main():
     # SGD
     sgd_history, sgd_test_loss, sgd_test_acc = train_with_sgd(num_epochs=10, batch_size=32, device=device)
 
-    # Plot results
-    # plot_training_history(history, config)
-
     # Plot comparison
     plt.figure(figsize=(8, 5))
     plt.plot(history['losses'], label=f'Opt2Vec (Test Acc: {opt2vec_test_acc*100:.1f}%)')
@@ -417,8 +414,16 @@ def main():
     plt.show()
 
     print("\nEnhanced Opt2Vec demonstration completed!")
-    print("Check the generated plots for training history.")
 
+    # Plot training history
+    plot_training_history(history, config)
+    plot_training_history(adam_history, config)
+    plot_training_history(sgd_history, config)
+
+    # Hyperparameter sweep section
+    print("Hyperparameter Sweep: Opt2Vec Configurations")
+    print("="*50)
+    compare_configurations()
 
 if __name__ == "__main__":
     main()
