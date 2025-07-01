@@ -525,12 +525,6 @@ if __name__ == "__main__":
 
     print("\nCOMPARISON COMPLETED!")
     print("Check 'optimizer_comparison_results.png' for detailed visualizations.")
-    print("The comparison shows:")
-    print("  - Learning curves for all optimizers")
-    print("  - Final loss comparison")
-    print("  - Loss improvement comparison")
-    print("  - Training time comparison")
-    print("  - Statistical significance analysis")
 
     # Optionally run variant comparison
     # variant_results = compare_meta_learning_variants(device)
